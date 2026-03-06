@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="diagnostics\**" />
+    <Compile Remove="Models\**" />
+    <Compile Remove="Providers\**" />
+    <Compile Remove="Services\**" />
+    <Compile Remove="AgentMonitor.Core\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.54.1-alpha.0.68" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="AgentMonitor.Core\AgentMonitor.Core.csproj" />
+  </ItemGroup>
+
+</Project>

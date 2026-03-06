@@ -1,0 +1,7 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+diagnostics/debug-detect.cs
