@@ -22,6 +22,7 @@ public static class ProcessDetector
             return lockedIds;
 
         var dirsWithoutDb = new List<(string sessionId, DateTime creationTime)>();
+        var dirsWithDb = new List<(string sessionId, DateTime creationTime)>();
 
         foreach (var dir in Directory.GetDirectories(sessionStatePath))
         {
@@ -32,27 +33,35 @@ public static class ProcessDetector
             {
                 if (IsFileLocked(dbFile))
                     lockedIds.Add(sessionId);
+                else
+                    dirsWithDb.Add((sessionId, Directory.GetCreationTimeUtc(dir)));
             }
             else
             {
-                // No session.db — track for process-matching fallback
                 dirsWithoutDb.Add((sessionId, Directory.GetCreationTimeUtc(dir)));
             }
         }
 
-        // Fallback: for sessions without session.db, match copilot.exe process start times
-        // to session directory creation times (within 5 seconds)
-        if (dirsWithoutDb.Count > 0)
+        // Get running copilot.exe process count and start times for fallback matching
+        var processStartTimes = GetCopilotProcessStartTimesUtc();
+        var unmatchedProcesses = processStartTimes.Count - lockedIds.Count;
+
+        // Fallback: match remaining copilot.exe processes to session dirs by creation time.
+        // This handles: (1) sessions without session.db, (2) stale file locks after
+        // sleep/hibernate where processes are still running but locks were released.
+        if (unmatchedProcesses > 0)
         {
-            var processStartTimes = GetCopilotProcessStartTimesUtc();
-            foreach (var (sessionId, creationTime) in dirsWithoutDb)
+            var allUnmatched = dirsWithoutDb.Concat(dirsWithDb).ToList();
+            foreach (var (sessionId, creationTime) in allUnmatched)
             {
+                if (lockedIds.Contains(sessionId))
+                    continue;
+
                 foreach (var procStart in processStartTimes)
                 {
                     var diff = Math.Abs((creationTime - procStart).TotalSeconds);
                     if (diff < 5)
                     {
-                        // Also verify no session.shutdown event
                         var eventsFile = Path.Combine(sessionStatePath, sessionId, "events.jsonl");
                         if (!HasShutdownEvent(eventsFile))
                         {
