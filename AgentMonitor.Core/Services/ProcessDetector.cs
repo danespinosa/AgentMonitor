@@ -1,15 +1,21 @@
 namespace AgentMonitor.Services;
 
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 [SupportedOSPlatform("windows")]
-public static class ProcessDetector
+public static partial class ProcessDetector
 {
+    [GeneratedRegex(@"--resume[= ]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", RegexOptions.IgnoreCase)]
+    private static partial Regex ResumeSessionIdRegex();
+
     /// <summary>
-    /// Returns session IDs whose session.db is currently locked by a running copilot process,
-    /// plus sessions without session.db that match a running copilot.exe by creation time.
+    /// Detects running copilot sessions using three methods:
+    /// 1. File lock on session.db (most reliable when locks aren't stale)
+    /// 2. Parse --resume session IDs from copilot.exe command lines
+    /// 3. Match process start times to session dir creation times (fallback)
     /// </summary>
     public static HashSet<string> GetLockedCopilotSessionIds(string? basePath = null)
     {
@@ -21,53 +27,41 @@ public static class ProcessDetector
         if (!Directory.Exists(sessionStatePath))
             return lockedIds;
 
-        var dirsWithoutDb = new List<(string sessionId, DateTime creationTime)>();
-        var dirsWithDb = new List<(string sessionId, DateTime creationTime)>();
-
+        // Method 1: file lock detection
         foreach (var dir in Directory.GetDirectories(sessionStatePath))
         {
             var dbFile = Path.Combine(dir, "session.db");
-            var sessionId = Path.GetFileName(dir);
-
-            if (File.Exists(dbFile))
-            {
-                if (IsFileLocked(dbFile))
-                    lockedIds.Add(sessionId);
-                else
-                    dirsWithDb.Add((sessionId, Directory.GetCreationTimeUtc(dir)));
-            }
-            else
-            {
-                dirsWithoutDb.Add((sessionId, Directory.GetCreationTimeUtc(dir)));
-            }
+            if (File.Exists(dbFile) && IsFileLocked(dbFile))
+                lockedIds.Add(Path.GetFileName(dir));
         }
 
-        // Get running copilot.exe process count and start times for fallback matching
-        var processStartTimes = GetCopilotProcessStartTimesUtc();
-        var unmatchedProcesses = processStartTimes.Count - lockedIds.Count;
+        // Get process info for methods 2 and 3
+        var (resumeIds, processStartTimes) = GetCopilotProcessInfo();
 
-        // Fallback: match remaining copilot.exe processes to session dirs by creation time.
-        // This handles: (1) sessions without session.db, (2) stale file locks after
-        // sleep/hibernate where processes are still running but locks were released.
-        if (unmatchedProcesses > 0)
+        // Method 2: extract session IDs from --resume command line args
+        foreach (var sessionId in resumeIds)
         {
-            var allUnmatched = dirsWithoutDb.Concat(dirsWithDb).ToList();
-            foreach (var (sessionId, creationTime) in allUnmatched)
-            {
-                if (lockedIds.Contains(sessionId))
-                    continue;
+            if (Directory.Exists(Path.Combine(sessionStatePath, sessionId)))
+                lockedIds.Add(sessionId);
+        }
 
-                foreach (var procStart in processStartTimes)
+        // Method 3: match process start times to session dir creation times
+        foreach (var dir in Directory.GetDirectories(sessionStatePath))
+        {
+            var sessionId = Path.GetFileName(dir);
+            if (lockedIds.Contains(sessionId))
+                continue;
+
+            var creationTime = Directory.GetCreationTimeUtc(dir);
+            foreach (var procStart in processStartTimes)
+            {
+                if (Math.Abs((creationTime - procStart).TotalSeconds) < 5)
                 {
-                    var diff = Math.Abs((creationTime - procStart).TotalSeconds);
-                    if (diff < 5)
+                    var eventsFile = Path.Combine(dir, "events.jsonl");
+                    if (!HasShutdownEvent(eventsFile))
                     {
-                        var eventsFile = Path.Combine(sessionStatePath, sessionId, "events.jsonl");
-                        if (!HasShutdownEvent(eventsFile))
-                        {
-                            lockedIds.Add(sessionId);
-                            break;
-                        }
+                        lockedIds.Add(sessionId);
+                        break;
                     }
                 }
             }
@@ -104,23 +98,64 @@ public static class ProcessDetector
         return lockedIds;
     }
 
-    private static List<DateTime> GetCopilotProcessStartTimesUtc()
+    /// <summary>
+    /// Gets copilot.exe process info by shelling out to pwsh to read command lines.
+    /// WMI/System.Management doesn't work in .NET 10 (COM disabled).
+    /// </summary>
+    private static (HashSet<string> resumeIds, List<DateTime> startTimes) GetCopilotProcessInfo()
     {
-        var times = new List<DateTime>();
+        var resumeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var startTimes = new List<DateTime>();
+        var regex = ResumeSessionIdRegex();
+
+        // Get command lines via pwsh (WMI doesn't work in .NET 10)
+        try
+        {
+            var psi = new ProcessStartInfo("pwsh", "-NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='copilot.exe'\\\" | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress\"")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            var proc = Process.Start(psi);
+            if (proc is not null)
+            {
+                var json = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(5000);
+
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    // Parse JSON — could be array or single object
+                    using var doc = JsonDocument.Parse(json);
+                    var items = doc.RootElement.ValueKind == JsonValueKind.Array
+                        ? doc.RootElement.EnumerateArray().ToList()
+                        : [doc.RootElement];
+
+                    foreach (var item in items)
+                    {
+                        var cmdLine = item.GetProperty("CommandLine").GetString() ?? "";
+                        var match = regex.Match(cmdLine);
+                        if (match.Success)
+                            resumeIds.Add(match.Groups[1].Value);
+                    }
+                }
+            }
+        }
+        catch { }
+
+        // Get start times via Process API (always works)
         try
         {
             foreach (var proc in Process.GetProcessesByName("copilot"))
             {
-                try
-                {
-                    times.Add(proc.StartTime.ToUniversalTime());
-                }
+                try { startTimes.Add(proc.StartTime.ToUniversalTime()); }
                 catch { }
                 finally { proc.Dispose(); }
             }
         }
         catch { }
-        return times;
+
+        return (resumeIds, startTimes);
     }
 
     private static bool HasShutdownEvent(string eventsFile)
@@ -129,11 +164,9 @@ public static class ProcessDetector
             return false;
         try
         {
-            // Read the last line efficiently
             using var fs = new FileStream(eventsFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             if (fs.Length == 0) return false;
 
-            // Seek near end and read last line
             var startPos = Math.Max(0, fs.Length - 4096);
             fs.Seek(startPos, SeekOrigin.Begin);
             using var reader = new StreamReader(fs);
@@ -155,8 +188,6 @@ public static class ProcessDetector
     {
         try
         {
-            // Use ReadWrite with FileShare.Read — this detects active write locks
-            // held by running processes, while ignoring stale shared/read locks.
             using var fs = File.Open(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
             return false;
         }
