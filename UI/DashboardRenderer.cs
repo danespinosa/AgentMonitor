@@ -47,9 +47,10 @@ public static class DashboardRenderer
         table.AddColumn(new TableColumn("[bold] [/]").Width(3));
         table.AddColumn(new TableColumn("[bold]Type[/]").Centered().Width(6));
         table.AddColumn(new TableColumn("[bold]Status[/]").Centered().Width(16));
-        table.AddColumn(new TableColumn("[bold]Summary[/]").Width(35));
-        table.AddColumn(new TableColumn("[bold]Branch[/]").Width(20));
-        table.AddColumn(new TableColumn("[bold]Working Dir[/]").Width(25));
+        table.AddColumn(new TableColumn("[bold]Session ID[/]").Width(10));
+        table.AddColumn(new TableColumn("[bold]Summary[/]").Width(30));
+        table.AddColumn(new TableColumn("[bold]Branch[/]").Width(18));
+        table.AddColumn(new TableColumn("[bold]Working Dir[/]").Width(22));
         table.AddColumn(new TableColumn("[bold]Todos[/]").Centered().Width(12));
         table.AddColumn(new TableColumn("[bold]Last Activity[/]").RightAligned().Width(14));
 
@@ -78,6 +79,7 @@ public static class DashboardRenderer
                 pointer,
                 FormatType(session.Type, isSelected),
                 FormatStatus(session.Status, isSelected, session.IsRunning),
+                FormatSessionId(session.Id, isSelected),
                 FormatSummary(session.Summary, session.Status, isSelected),
                 FormatBranch(session.Branch, isSelected),
                 FormatWorkingDir(session.WorkingDirectory, isSelected),
@@ -135,6 +137,14 @@ public static class DashboardRenderer
             $"[yellow]●{idle}[/] Idle  [grey]●{stopped}[/] Stopped  " +
             $"│  Showing: {position}  │  Refreshed: {elapsed}" +
             Environment.NewLine + helpText);
+    }
+
+    private static Markup FormatSessionId(string id, bool selected)
+    {
+        // Show first 8 chars of the UUID (enough to identify)
+        var shortId = id.Length >= 8 ? id[..8] : id;
+        var bg = selected ? " on grey23" : "";
+        return new Markup($"[dim{bg}]{Markup.Escape(shortId)}[/]");
     }
 
     private static Markup FormatType(AgentType type, bool selected)
