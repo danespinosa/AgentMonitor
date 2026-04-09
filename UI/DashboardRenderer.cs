@@ -47,7 +47,7 @@ public static class DashboardRenderer
         table.AddColumn(new TableColumn("[bold] [/]").Width(3));
         table.AddColumn(new TableColumn("[bold]Type[/]").Centered().Width(6));
         table.AddColumn(new TableColumn("[bold]Status[/]").Centered().Width(16));
-        table.AddColumn(new TableColumn("[bold]Session ID[/]").Width(10));
+        table.AddColumn(new TableColumn("[bold]Session ID[/]").Width(38));
         table.AddColumn(new TableColumn("[bold]Summary[/]").Width(30));
         table.AddColumn(new TableColumn("[bold]Branch[/]").Width(18));
         table.AddColumn(new TableColumn("[bold]Working Dir[/]").Width(22));
@@ -141,10 +141,8 @@ public static class DashboardRenderer
 
     private static Markup FormatSessionId(string id, bool selected)
     {
-        // Show first 8 chars of the UUID (enough to identify)
-        var shortId = id.Length >= 8 ? id[..8] : id;
         var bg = selected ? " on grey23" : "";
-        return new Markup($"[dim{bg}]{Markup.Escape(shortId)}[/]");
+        return new Markup($"[dim{bg}]{Markup.Escape(id)}[/]");
     }
 
     private static Markup FormatType(AgentType type, bool selected)
