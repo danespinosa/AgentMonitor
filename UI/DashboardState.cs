@@ -35,7 +35,8 @@ public sealed class DashboardState
             result = result.Where(s =>
                 s.WorkingDirectory.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || s.Summary.Contains(search, StringComparison.OrdinalIgnoreCase)
-                || s.Branch.Contains(search, StringComparison.OrdinalIgnoreCase));
+                || s.Branch.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || s.Id.Contains(search, StringComparison.OrdinalIgnoreCase));
         }
 
         return result.ToList();
