@@ -5,27 +5,30 @@ using AgentMonitor.Models;
 public sealed class DashboardState
 {
     private static readonly string[] FilterLabels =
-        ["Open", "All", "Attention", "Running", "Idle", "Stopped"];
+        ["Open", "All", "Favorites", "Attention", "Running", "Idle", "Stopped"];
 
     private int _selectedIndex;
     private int _filterIndex; // Start on "Open" (all with running process)
     private string _searchText = string.Empty;
     private bool _isSearchMode;
+    private readonly FavoritesStore _favorites = new();
 
     public int SelectedIndex => _selectedIndex;
     public string FilterLabel => FilterLabels[_filterIndex];
     public string SearchText => _searchText;
     public bool IsSearchMode => _isSearchMode;
+    public FavoritesStore Favorites => _favorites;
 
     public IReadOnlyList<AgentSession> ApplyFilter(IReadOnlyList<AgentSession> sessions)
     {
         IEnumerable<AgentSession> result = _filterIndex switch
         {
             0 => sessions.Where(s => s.IsRunning),
-            2 => sessions.Where(s => s.Status == SessionStatus.Attention),
-            3 => sessions.Where(s => s.Status == SessionStatus.Running),
-            4 => sessions.Where(s => s.Status == SessionStatus.Idle),
-            5 => sessions.Where(s => s.Status == SessionStatus.Stopped),
+            2 => sessions.Where(s => _favorites.IsFavorite(s.Id)),
+            3 => sessions.Where(s => s.Status == SessionStatus.Attention),
+            4 => sessions.Where(s => s.Status == SessionStatus.Running),
+            5 => sessions.Where(s => s.Status == SessionStatus.Idle),
+            6 => sessions.Where(s => s.Status == SessionStatus.Stopped),
             _ => sessions
         };
 
@@ -93,6 +96,13 @@ public sealed class DashboardState
     {
         _filterIndex = (_filterIndex + 1) % FilterLabels.Length;
         _selectedIndex = 0;
+    }
+
+    public void ToggleFavorite(IReadOnlyList<AgentSession> filtered)
+    {
+        var session = GetSelectedSession(filtered);
+        if (session is not null)
+            _favorites.Toggle(session.Id);
     }
 
     public void PageUp(int pageSize)
