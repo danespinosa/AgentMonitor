@@ -75,8 +75,8 @@ public static class DashboardRenderer
             bool isSelected = i == state.SelectedIndex;
             var isFav = state.Favorites.IsFavorite(session.Id);
             var pointer = isSelected
-                ? new Markup(isFav ? "[bold yellow]►⭐[/]" : "[bold cyan]► [/]")
-                : new Markup(isFav ? "[yellow] ⭐[/]" : "  ");
+                ? new Markup(isFav ? "[bold yellow]►★[/]" : "[bold cyan]► [/]")
+                : new Markup(isFav ? "[yellow] ★[/]" : "  ");
 
             table.AddRow(
                 pointer,
@@ -105,7 +105,7 @@ public static class DashboardRenderer
         var cwd = string.IsNullOrWhiteSpace(session.WorkingDirectory) ? "—" : session.WorkingDirectory;
         var branch = string.IsNullOrWhiteSpace(session.Branch) ? "—" : session.Branch;
         var typeLabel = session.Type == AgentType.CopilotCli ? "Copilot CLI" : "Claude CLI";
-        var favLabel = favorites.IsFavorite(session.Id) ? "  [yellow]⭐ Favorite[/]" : "";
+        var favLabel = favorites.IsFavorite(session.Id) ? "  [yellow]★ Favorite[/]" : "";
 
         return new Panel(
             new Markup(
@@ -137,7 +137,7 @@ public static class DashboardRenderer
             : "  [dim][bold]↑↓[/] Navigate  [bold]PgUp/PgDn[/] Page  [bold]Enter[/] Resume  [bold]*[/] Fav  [bold]F[/] Filter  [bold]/[/] Search  [bold]Esc[/] Clear  [bold]Q[/] Quit[/]";
 
         var favCount = state.Favorites.Count;
-        var favDisplay = favCount > 0 ? $"  [yellow]⭐{favCount}[/] Favorites" : "";
+        var favDisplay = favCount > 0 ? $"  [yellow]★{favCount}[/] Favorites" : "";
 
         return new Markup(
             $"  [red]●{attention}[/] Attention  [green]●{running}[/] Running  " +
