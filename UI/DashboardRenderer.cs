@@ -17,7 +17,7 @@ public static class DashboardRenderer
         var layout = new Rows(
             RenderHeader(state),
             RenderTable(filtered, state),
-            RenderDetailPanel(state.GetSelectedSession(filtered)),
+            RenderDetailPanel(state.GetSelectedSession(filtered), state.Favorites),
             RenderFooter(allSessions, filtered, state, lastRefresh));
 
         return layout;
@@ -44,7 +44,7 @@ public static class DashboardRenderer
             .BorderColor(Color.Grey)
             .Expand();
 
-        table.AddColumn(new TableColumn("[bold] [/]").Width(3));
+        table.AddColumn(new TableColumn("[bold] [/]").Width(4));
         table.AddColumn(new TableColumn("[bold]Type[/]").Centered().Width(6));
         table.AddColumn(new TableColumn("[bold]Status[/]").Centered().Width(16));
         table.AddColumn(new TableColumn("[bold]Session ID[/]").Width(38));
@@ -73,7 +73,10 @@ public static class DashboardRenderer
         {
             var session = sessions[i];
             bool isSelected = i == state.SelectedIndex;
-            var pointer = isSelected ? new Markup("[bold cyan]►[/]") : new Markup(" ");
+            var isFav = state.Favorites.IsFavorite(session.Id);
+            var pointer = isSelected
+                ? new Markup(isFav ? "[bold yellow]►⭐[/]" : "[bold cyan]► [/]")
+                : new Markup(isFav ? "[yellow] ⭐[/]" : "  ");
 
             table.AddRow(
                 pointer,
@@ -93,7 +96,7 @@ public static class DashboardRenderer
         return table;
     }
 
-    private static IRenderable RenderDetailPanel(AgentSession? session)
+    private static IRenderable RenderDetailPanel(AgentSession? session, FavoritesStore favorites)
     {
         if (session is null)
             return new Markup("");
@@ -102,10 +105,11 @@ public static class DashboardRenderer
         var cwd = string.IsNullOrWhiteSpace(session.WorkingDirectory) ? "—" : session.WorkingDirectory;
         var branch = string.IsNullOrWhiteSpace(session.Branch) ? "—" : session.Branch;
         var typeLabel = session.Type == AgentType.CopilotCli ? "Copilot CLI" : "Claude CLI";
+        var favLabel = favorites.IsFavorite(session.Id) ? "  [yellow]⭐ Favorite[/]" : "";
 
         return new Panel(
             new Markup(
-                $"[bold]{Markup.Escape(summary)}[/]" + Environment.NewLine +
+                $"[bold]{Markup.Escape(summary)}[/]{favLabel}" + Environment.NewLine +
                 $"  Type: [cyan]{typeLabel}[/]  │  Branch: [italic]{Markup.Escape(branch)}[/]  │  " +
                 $"Last Event: [dim]{Markup.Escape(session.LastEventType)}[/]" + Environment.NewLine +
                 $"  Path: [dim]{Markup.Escape(cwd)}[/]"))
@@ -130,11 +134,14 @@ public static class DashboardRenderer
 
         var helpText = state.IsSearchMode
             ? "  [dim][bold]Type[/] to search  [bold]Enter[/] confirm  [bold]Esc[/] clear  [bold]↑↓[/] Navigate[/]"
-            : "  [dim][bold]↑↓[/] Navigate  [bold]PgUp/PgDn[/] Page  [bold]Enter[/] Resume  [bold]F[/] Filter  [bold]/[/] Search  [bold]Esc[/] Clear  [bold]Q[/] Quit[/]";
+            : "  [dim][bold]↑↓[/] Navigate  [bold]PgUp/PgDn[/] Page  [bold]Enter[/] Resume  [bold]*[/] Fav  [bold]F[/] Filter  [bold]/[/] Search  [bold]Esc[/] Clear  [bold]Q[/] Quit[/]";
+
+        var favCount = state.Favorites.Count;
+        var favDisplay = favCount > 0 ? $"  [yellow]⭐{favCount}[/] Favorites" : "";
 
         return new Markup(
             $"  [red]●{attention}[/] Attention  [green]●{running}[/] Running  " +
-            $"[yellow]●{idle}[/] Idle  [grey]●{stopped}[/] Stopped  " +
+            $"[yellow]●{idle}[/] Idle  [grey]●{stopped}[/] Stopped{favDisplay}  " +
             $"│  Showing: {position}  │  Refreshed: {elapsed}" +
             Environment.NewLine + helpText);
     }

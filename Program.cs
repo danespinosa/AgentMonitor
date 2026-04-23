@@ -114,6 +114,11 @@ _ = Task.Run(() =>
                             state.EnterSearchMode();
                             inputReady.Set();
                         }
+                        else if (key.KeyChar == '*')
+                        {
+                            state.ToggleFavorite(state.ApplyFilter(lastSessions));
+                            inputReady.Set();
+                        }
                         break;
                 }
             }
